@@ -1,0 +1,151 @@
+---
+title: "Clean data for DTS paper"
+date: "2021-04-20 <br> Updated: `r Sys.Date()`"
+---
+
+# ⭐️Overview
+
+**2021-03-11, from Michael Businelle**
+
+Hi Michael. Here are the analyses that we would like you to run for the first Link2Care paper.
+
+**2021-04-16, Meeting with Michael Businelle**
+
+- IV’s: 4 DTS sub scales
+- DV’s: depression, hostility, urban life stress, and aggression
+- Adjust: Same as before
+- Add these new analyses to the existing word document
+
+![](img/var_table.png)
+
+**NOTE on source data**
+
+Eventually, it would be nice to use the single, complete analysis data set that we are creating. For now, there is a ton of data management in this code.
+
+# 📦Load packages
+
+```{r message=FALSE}
+library(dplyr)
+library(haven)
+```
+
+# 🌎Connect to UTH server 
+
+```{bash}
+# Don't drill all the way down to live documents because not all of the data is in live documents.
+open 'smb://islgpcifs.uthouston.edu/sph_research/Link2Care/'
+```
+
+# 📥Import data 
+
+Below, we run the file, data_survey_01_import.Rmd, which is used to import the Link2Care follow-up visit survey data and do some initial data cleaning (e.g., create calculated variables).
+
+```{r message=FALSE}
+source("source_rmd.R")
+source_rmd("data_survey_01_import.Rmd")
+rm(source_rmd)
+# 264 rows and 2855 columns
+```
+
+
+# 🚧Data management 
+
+Only do data management in this file that applies to this analysis only. If the data management task is likely to be more broadly applicable, then add it to data_survey_01_import.Rmd.
+
+## Keep columns of interest
+
+![](img/var_table.png)
+
+This is strictly necessary, but it makes the data easier to work with.
+
+```{r}
+dts_df <- all_visits %>%
+  select(
+    id, group, dts_total_v2, PHQ_dep_dichot_total, gad_7_total_v1, 
+    aggression_total, tcu_hs_v2_total, uls_v2_total, ddd_v1_total, 
+    pv_violence_victim_30_f, pv_witness_violence_30, pv_witness_violence_30_f,
+    pv_witness_violence_6, pv_witness_violence_6_f,
+    ise_appraisal_v1, ise_belonging_v1, ise_tangable_v1, age, gender_v1_f, 
+    race, race_f, hispanic, hispanic_f, edu_19_cat, edu_19_cat_f, 
+    homeless_current_total, homeless_time_total, dts_tolerance_v2,
+    dts_absorption_v2, dts_appraisal_v2, dts_regulation_v2
+  )
+```
+
+```{r}
+dim(dts_df) # 264  31
+```
+
+## Filter out rows in the table
+
+2020-12-08, from Michael: Can you start by recreating a baseline table with all the variables below (use all participants to date that have completed the baseline and randomization visits)?
+
+2021-01-20: Michael said to consider visit 2 answers to be "baseline" answers for questions that weren't asked at visit 1.
+
+Select people who were randomized only
+
+```{r}
+dts_df <- dts_df %>% 
+  filter(group %in% 1:3)
+```
+
+```{r}
+dim(dts_df) # 245  31
+```
+
+**NOTE on number of randomized people**
+2021-03-16: When we import the data above, it says that 250 were randomized. However, there are only 245 people remaining when we filter out people who are not assigned to a group in the data above. I did some digging in data_survey_01_import.Rmd, and found that there are 5 people in the Master Log (2265, 2266, 2267, 2268, 2269) that don't appear in the QDS data. It appears as though this is just because the QDS data hasn't been downloaded recently. I'm going to just push ahead for now.
+
+## 🧮Recode/calculate variables
+
+### Social support total
+
+```{r}
+dts_df <- dts_df %>% 
+  mutate(ise_total = ise_appraisal_v1 + ise_belonging_v1 + ise_tangable_v1)
+```
+
+### Race/Ethnicity
+
+```{r}
+dts_df <- dts_df %>% 
+  mutate(
+    race_eth_4_cat = case_when(
+      hispanic_f == "Yes" ~ 3, # Hispanic, any race
+      race == 2 ~ 1, # White, non-Hispanic
+      race == 3 ~ 2, # Black, non-Hispanic
+      TRUE ~ 4 # Other race, non-Hispanic
+    ),
+    race_eth_4_cat_f = factor(
+      race_eth_4_cat, 1:4, c(
+        "White, non-Hispanic", "Black, non-Hispanic", "Hispanic, any race",
+        "Other race, non-Hispanic"
+      )
+    )
+  )
+```
+
+### Education
+
+```{r}
+dts_df <- dts_df %>% 
+  mutate(
+    high_school_grad = if_else(edu_19_cat < 12, 0, 1),
+    high_school_grad_f = factor(high_school_grad, 0:1, c("No", "Yes"))
+  )
+```
+
+
+# Export analysis data
+
+Export the analysis data and upload it to Kiteworks.
+
+```{r}
+write_sav(dts_df, "data/dts_paper.sav")
+```
+
+
+```{r echo=FALSE}
+sessionInfo()
+```
+
