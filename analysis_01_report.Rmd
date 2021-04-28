@@ -35,6 +35,9 @@ library(freqtables)
 library(broom)
 library(VGAM)
 library(psych)
+library(stringr)
+library(purrr)
+library(flextable)
 ```
 
 # 🌎Connect to UTH server 
@@ -2631,12 +2634,155 @@ dts_report <- dts_report %>%
   body_add_par("")
 ```
 
-# 📌Generate Word report
+
+## 5️⃣DTS subscale analysis
+
+2021-04-27, From Michael:
+
+Hi Brad. Sorry I did not include you on the Zoom invite. I met with the rest of the team and walked through the analyses. There should be 5 models, one with each DV. All 4 of the Distress Tolerance subscales should be entered at once (with covariates) predicting DVs…
+
+### Create var lists
+
+```{r}
+out_vars <- c(
+  "PHQ_dep_dichot_total", "aggression_total", "tcu_hs_v2_total", "gad_7_total_v1", 
+  "uls_v2_total"
+)
+
+pred_vars <- c(
+  "dts_tolerance_v2", "dts_absorption_v2", "dts_appraisal_v2", 
+  "dts_regulation_v2"
+)
+
+# Put predictor variables in a form that is easy to convert into a formula for modeling
+pred_vars_mod <- paste(pred_vars, collapse = " + ")
+
+confounders <- c(
+  "age", "gender_v1_f", "race_eth_4_cat_f", "high_school_grad_f", 
+  "homeless_current_total"
+)
+
+# Put confounders in a form that is easy to convert into a formula for modeling
+confounders_mod <- paste(confounders, collapse = " + ")
+
+# Combine predictor variables and confounders to form the right-hand side of 
+# the model formula
+rhs <- paste(pred_vars_mod, confounders_mod, sep = " + ")
+```
+
+### Helper function: 
+
+```{r}
+tidy_lm <- function(.y, .rhs, .data) {
+  # Create a formula for the model function
+  f <- as.formula(paste(.y, rhs, sep = " ~ "))
+  # Fit the model
+  m <- lm(f, data = .data)
+  # Tidy the output
+  m %>%
+    broom::tidy() %>% 
+    # Just keep the coefficients for the dts subscales
+    filter(str_detect(term, "dts")) %>% 
+    # Make it clear which outcome is being modeled
+    mutate(outcome = .y) %>% 
+    # Round estimates and p values
+    mutate(across(estimate:p.value, ~round(.x, 4))) %>% 
+    # Keep and reorder columns of interest
+    select(outcome, term, estimate, p.value)
+}
+
+# For testing
+# tidy_lm(out_vars[1], rhs, dts_df)
+```
+
+### Run Adjusted models
+
+```{r}
+models_adj <- map_df(
+  .x = out_vars,
+  .f = ~ tidy_lm(.x, rhs, dts_df)
+)
+```
+
+All models adjusted for age, sex, race/ethnicity, education (<HS/HS+), and Length of current homelessness.
+
+### Make variable names easier for end users to read
+
+```{r}
+models_adj <- models_adj %>% 
+  mutate(
+    term = case_when(
+      term == "dts_tolerance_v2" ~ "DTS: Tolerance",
+      term == "dts_absorption_v2" ~ "DTS: Absorption",
+      term == "dts_appraisal_v2" ~ "DTS: Appraisal",
+      term == "dts_regulation_v2" ~ "DTS: Regulation"
+    )
+  ) %>%
+  rename(Predictor = term, Estimate = estimate, p = p.value)
+```
+
+### Helper function: make_ft
+
+```{r}
+make_ft <- function(.y, .data) {
+  models_adj %>% 
+    filter(outcome == .y) %>% 
+    select(-outcome) %>%
+    flextable() %>% 
+    set_table_properties(layout = "autofit") %>% 
+    # Change font to times new roman
+    font(fontname = "Times New Roman", part = "all") %>% 
+    # Conditionally format p < 0.05 to green
+    color(i = ~ p < 0.05, j = "p", color = "#458B00")
+}
+
+# For testing
+# make_ft("PHQ_dep_dichot_total", models_adj)
+```
+
+### Create a separate Word report
+
+```{r}
+dts_sub_report <- read_docx("docs/template_dts_subscales.docx") %>% 
+  body_replace_text_at_bkm("date", as.character(Sys.Date()))
+```
+
+### Create flextables
+
+And add to Word bookmarks
+
+```{r}
+walk2(
+  .x = out_vars,
+  # Bookmark names for Word document
+  .y = c(
+    "table_depression", "table_aggression", "table_hostility", "table_anxiety",
+    "table_uls"
+  ),
+  .f = function(x, y) {
+    ft <- make_ft(x, models_adj)
+    out <- get("dts_sub_report", envir = .GlobalEnv)
+    out <- out %>% 
+      body_replace_flextable_at_bkm(y, ft)
+    assign("dts_sub_report", out, envir = .GlobalEnv)
+  }
+)
+```
+
+
+# 📌Generate Word reports
 
 ```{r}
 print(
   dts_report, 
   "docs/DTS Analysis Report.docx"
+)
+```
+
+```{r}
+print(
+  dts_sub_report, 
+  "docs/DTS Subscale Analysis Report.docx"
 )
 ```
 
