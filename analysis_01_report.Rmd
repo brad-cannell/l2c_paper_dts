@@ -2675,7 +2675,7 @@ rhs <- paste(pred_vars_mod, confounders_mod, sep = " + ")
 ```{r}
 tidy_lm <- function(.y, .rhs, .data) {
   # Create a formula for the model function
-  f <- as.formula(paste(.y, rhs, sep = " ~ "))
+  f <- as.formula(paste(.y, .rhs, sep = " ~ "))
   # Fit the model
   m <- lm(f, data = .data)
   # Tidy the output
@@ -2695,7 +2695,58 @@ tidy_lm <- function(.y, .rhs, .data) {
 # tidy_lm(out_vars[1], rhs, dts_df)
 ```
 
+### Run unadjusted models
+
+2021-07-14, Jordan Neil: For Jillian’s paper, can you send me the output for the 4 DTS models? I don’t use R, but can you create an R markdown file with output that includes the full model diagnostics (e.g., R2, adjusted and unadjusted estimates for DTS and covariates), I can write that up in-text.
+
+```{r}
+# For testing
+# lm(PHQ_dep_dichot_total ~ dts_tolerance_v2 + dts_absorption_v2 + dts_appraisal_v2 + dts_regulation_v2, data = dts_df) 
+```
+
+```{r}
+# For testing
+# tidy_lm("PHQ_dep_dichot_total", pred_vars_mod, dts_df)
+```
+
+```{r}
+models_unadj <- map_df(
+  .x = out_vars,
+  .f = ~ tidy_lm(.x, pred_vars_mod, dts_df)
+)
+```
+
+```{r}
+model_diagnostics_unadj <- map_df(
+  .x = out_vars,
+  .f = function(x) {
+    # Create a formula for the model function
+    f <- as.formula(paste(x, pred_vars_mod, sep = " ~ "))
+    # Fit the model
+    m <- lm(f, data = dts_df)
+    # Create data frame of model diagnostics 
+    d <- broom::glance(m) %>% 
+      # Add the outcome var to the table of output
+      mutate(outcome = x) %>% 
+      select(outcome, everything()) %>% 
+      # Round estimates and p values
+      mutate(across(c(r.squared:p.value, logLik:deviance), ~round(.x, 4)))
+    d
+  }
+)
+```
+
 ### Run Adjusted models
+
+```{r}
+# For testing
+# lm(PHQ_dep_dichot_total ~ dts_tolerance_v2 + dts_absorption_v2 + dts_appraisal_v2 + dts_regulation_v2 + age + gender_v1_f + race_eth_4_cat_f + high_school_grad_f + homeless_current_total, dts_df)
+```
+
+```{r}
+# For testing
+# tidy_lm("PHQ_dep_dichot_total", rhs, dts_df)
+```
 
 ```{r}
 models_adj <- map_df(
@@ -2704,9 +2755,43 @@ models_adj <- map_df(
 )
 ```
 
+```{r}
+model_diagnostics_adj <- map_df(
+  .x = out_vars,
+  .f = function(x) {
+    # Create a formula for the model function
+    f <- as.formula(paste(x, rhs, sep = " ~ "))
+    # Fit the model
+    m <- lm(f, data = dts_df)
+    # Create data frame of model diagnostics 
+    d <- broom::glance(m) %>% 
+      # Add the outcome var to the table of output
+      mutate(outcome = x) %>% 
+      select(outcome, everything()) %>% 
+      # Round estimates and p values
+      mutate(across(c(r.squared:p.value, logLik:deviance), ~round(.x, 4)))
+    d
+  }
+)
+```
+
 All models adjusted for age, sex, race/ethnicity, education (<HS/HS+), and Length of current homelessness.
 
 ### Make variable names easier for end users to read
+
+```{r}
+models_unadj <- models_unadj %>% 
+  mutate(
+    term = case_when(
+      term == "dts_tolerance_v2" ~ "DTS: Tolerance",
+      term == "dts_absorption_v2" ~ "DTS: Absorption",
+      term == "dts_appraisal_v2" ~ "DTS: Appraisal",
+      term == "dts_regulation_v2" ~ "DTS: Regulation"
+    )
+  ) %>%
+  rename(Predictor = term, Estimate = estimate, p = p.value)
+```
+
 
 ```{r}
 models_adj <- models_adj %>% 
@@ -2721,11 +2806,25 @@ models_adj <- models_adj %>%
   rename(Predictor = term, Estimate = estimate, p = p.value)
 ```
 
+### Join adjusted and unadjusted models
+
+Make it so the unadjusted estimate and p-value are placed next the the adjusted estimate and p-value in the table.
+
+```{r}
+models_unadj_and_adj <- models_unadj %>% 
+  left_join(models_adj, by = c("outcome", "Predictor")) %>% 
+  rename(
+    `Unadjusted Coef` = Estimate.x, `Unadjusted p` = p.x,
+    `Adjusted Coef` = Estimate.y, `Adjusted p` = p.y
+  )
+```
+
+
 ### Helper function: make_ft
 
 ```{r}
 make_ft <- function(.y, .data) {
-  models_adj %>% 
+  .data %>% 
     filter(outcome == .y) %>% 
     select(-outcome) %>%
     flextable() %>% 
@@ -2733,12 +2832,30 @@ make_ft <- function(.y, .data) {
     # Change font to times new roman
     font(fontname = "Times New Roman", part = "all") %>% 
     # Conditionally format p < 0.05 to green
-    color(i = ~ p < 0.05, j = "p", color = "#458B00")
+    color(i = ~ `Unadjusted p` < 0.05, j = 3, color = "#458B00") %>% 
+    color(i = ~ `Adjusted p` < 0.05, j = 5, color = "#458B00")
 }
 
 # For testing
-# make_ft("PHQ_dep_dichot_total", models_adj)
+make_ft("PHQ_dep_dichot_total", models_unadj_and_adj)
 ```
+
+```{r}
+make_ft_diag <- function(.y, .data) {
+  .data %>% 
+    filter(outcome == .y) %>% 
+    select(-outcome) %>%
+    flextable() %>% 
+    set_table_properties(layout = "autofit") %>% 
+    # Change font to times new roman
+    font(fontname = "Times New Roman", part = "all") 
+}
+
+# For testing
+# make_ft_diag("PHQ_dep_dichot_total", model_diagnostics_unadj)
+```
+
+### Add 
 
 ### Create a separate Word report
 
@@ -2752,6 +2869,7 @@ dts_sub_report <- read_docx("docs/template_dts_subscales.docx") %>%
 And add to Word bookmarks
 
 ```{r}
+# Models
 walk2(
   .x = out_vars,
   # Bookmark names for Word document
@@ -2760,7 +2878,7 @@ walk2(
     "table_uls"
   ),
   .f = function(x, y) {
-    ft <- make_ft(x, models_adj)
+    ft <- make_ft(x, models_unadj_and_adj)
     out <- get("dts_sub_report", envir = .GlobalEnv)
     out <- out %>% 
       body_replace_flextable_at_bkm(y, ft)
@@ -2769,6 +2887,45 @@ walk2(
 )
 ```
 
+```{r}
+# Unadjusted model diagnostics tables
+walk2(
+  .x = out_vars,
+  # Bookmark names for Word document
+  .y = c(
+    "table_depression_diag_unadj", "table_aggression_diag_unadj", 
+    "table_hostility_diag_unadj", "table_anxiety_diag_unadj", 
+    "table_uls_diag_unadj"
+  ),
+  .f = function(x, y) {
+    ft <- make_ft_diag(x, model_diagnostics_unadj)
+    out <- get("dts_sub_report", envir = .GlobalEnv)
+    out <- out %>% 
+      body_replace_flextable_at_bkm(y, ft)
+    assign("dts_sub_report", out, envir = .GlobalEnv)
+  }
+)
+```
+
+```{r}
+# Adjusted model diagnostics tables
+walk2(
+  .x = out_vars,
+  # Bookmark names for Word document
+  .y = c(
+    "table_depression_diag_adj", "table_aggression_diag_adj", 
+    "table_hostility_diag_adj", "table_anxiety_diag_adj", 
+    "table_uls_diag_adj"
+  ),
+  .f = function(x, y) {
+    ft <- make_ft_diag(x, model_diagnostics_adj)
+    out <- get("dts_sub_report", envir = .GlobalEnv)
+    out <- out %>% 
+      body_replace_flextable_at_bkm(y, ft)
+    assign("dts_sub_report", out, envir = .GlobalEnv)
+  }
+)
+```
 
 # 📌Generate Word reports
 
