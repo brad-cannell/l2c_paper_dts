@@ -125,30 +125,40 @@ This is primarily to supplement the group membership data (i.e., L2C, UCM, UCM+S
 For now, keep only the id and group from the master log. We may need other information in the future.
 
 ```{r}
-master_log <- read_excel(
-  master_log_path, 
+master_log_screened_in <- read_excel(
+  master_log_path,
+  # For testing
+  # "/Users/bradcannell/Desktop/L2C_Master_Log.xlsm",
   sheet = "Screened In",
-  col_names = c("id", "group"),
-  col_types = c("text", rep("skip", 6), "text", rep("skip", 26)),
+  col_names = c(
+    "id", "status", "date_baseline", "date_v2_scheduled", "date_v2", 
+    "date_v3_scheduled", "date_v3",  "date_v4_scheduled", "date_v4", 
+    "date_v5_scheduled", "date_v5", "group", "name_first", "name_middle_init", 
+    "name_last", "gender", "race", "hispanic", "date_birth", "age", "clincard_id", 
+    "n_clincards", "phone_id", "phone_number_l2c", "phone_n_distributed", 
+    "care_manager", "v1", "v2", "v3", "v4", "v5", "v3_r_distributed", 
+    "v3_r_completed", "v4_r_distributed", "v4_r_completed", "v5_r_distributed", 
+    "v5_r_completed", "v2_phone", "v3_phone", "v4_phone", "v5_phone"
+  ),
+  col_types = c(
+    # Some of the dates must be imported as text because the have embedded 
+    # notes (e.g., "no show")
+    rep("text",2) , rep("date", 9), rep("text", 7), "date", "numeric", "text", 
+    "numeric", rep("text", 2), "numeric", "text", rep("numeric", 15)
+  ),
+  na = c("", ".", "N/A", "No show", "No Show"),
   skip = 1
-) %>% 
-  # Coerce group to numeric so that it can be combined with the QDS data.
-  mutate(
-    group = case_when(
-      group == "UCM"    ~ 1,
-      group == "UCM+SP" ~ 2,
-      group == "L2C"    ~ 3
-    )
-  )
+)
 
 # Print a message for when this file is being sourced
 cat(
   paste0(Sys.Date(), ":"),
-  "Master log imported with", nrow(master_log), "rows and", ncol(master_log),
+  "Master log screened in imported with", nrow(master_log_screened_in), "rows and",
+  ncol(master_log_screened_in),
   "columns.\n"
 )
 
-# 2021-03-16: Master log imported with 271 rows and 2 columns.
+# 2021-11-04: Master log screened in imported with 325 rows and 41 columns.
 ```
 
 ```{r}
