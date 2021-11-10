@@ -1,0 +1,433 @@
+---
+title: "DTS Analysis Update"
+date: "2021-11-09 <br> Updated: `r Sys.Date()`"
+---
+
+# ⭐️Overview
+
+On 2021-11-08, we decided to update the tables used in the paper. The analyses run in analysis_01_report.Rmd were overkill for that purpose.
+
+# 📦Load packages
+
+```{r message=FALSE}
+library(dplyr, warn.conflicts = FALSE)
+library(haven)
+library(readr, warn.conflicts = FALSE)
+library(tidyr)
+library(purrr, warn.conflicts = FALSE)
+library(stringr, warn.conflicts = FALSE)
+library(officer, warn.conflicts = FALSE)
+library(flextable, warn.conflicts = FALSE)
+library(broom)
+```
+
+# 🌎Connect to UTH server 
+
+```{bash eval=FALSE}
+# Don't drill all the way down to live documents because not all of the data is in live documents.
+open 'smb://islgpcifs.uthouston.edu/sph_research/Link2Care/'
+```
+
+# 📥Import data 
+
+The dts_paper.sav data is created in data_02_clean.Rmd
+
+```{r}
+dts_df <- read_rds("/Volumes/Link2Care/Statistical Projects/Robison - Distress Tolerance Scale Paper/dts_paper.rds")
+```
+
+```{r}
+dim(dts_df) # 298  40
+```
+
+
+# 📈Analysis
+
+## Table 1
+
+### Continuous variables
+
+Calculate the mean and SD for all continuous variables in table 1.
+
+```{r}
+table_1_cont <- dts_df %>% 
+  # Calculate mean and sd for continuous variables
+  summarise(
+    across(
+      .cols = c(
+        age, mms_total, homeless_current_total, phq_8_total, gad_7_total_v1,
+        aggression_total, uls_v2_total, dts_total_v2, dts_tolerance_v2,
+        dts_appraisal_v2, dts_regulation_v2, dts_absorption_v2
+      ),
+      .fns = function(x) {
+        mean <- mean(x, na.rm = TRUE) %>% round(1) %>% format(nsmall = 1)
+        sd <- sd(x, na.rm = TRUE) %>% round(1) %>% format(nsmall = 1)
+        out <- paste0(mean, " (", sd, ")")
+        out
+      }
+    )
+  ) %>% 
+  # Flip vertically
+  pivot_longer(
+   cols = everything(),
+   names_to = "var",
+   values_to = "stats"
+  )
+```
+
+
+### Categorical variables
+
+Calculate n and percent for all categorical variables in table 1. See R for Epi.
+
+```{r}
+table_1_cat <- map_dfr(
+  .x = quos(
+    gender_v1_f, race_eth_4_cat_f, high_school_grad_f, homeless_mental_treatment_f,
+    phq_8_gt_10_f
+  ),
+  .f = function(x, data = dts_df) {
+    data %>% 
+      # Drop rows with missing - complete case analysis
+      filter(!is.na({{ x }})) %>% 
+      # Calculate frequency counts
+      count({{ x }}) %>% 
+      # Calculate percentages and format as n (%)
+      mutate(
+        percent = round(n / sum(n) * 100, 1) %>% format(nsmall = 1),
+        stats = paste0(n, " (", percent, ")"),
+        # Remove white space between opening parenthesis and percentage when 
+        # percentage is single digit.
+        stats = str_replace_all(stats, "\\( ", "\\(")
+      ) %>% 
+      mutate(var = names(.)[1]) %>%
+      rename(cat = 1) %>%
+      select(var, cat, stats)
+  }
+)
+```
+
+
+## DTS subscale analysis
+
+2021-04-27, From Michael:
+
+Hi Brad. Sorry I did not include you on the Zoom invite. I met with the rest of the team and walked through the analyses. There should be 5 models, one with each DV. All 4 of the Distress Tolerance subscales should be entered at once (with covariates) predicting DVs…
+
+### Create var lists
+
+```{r}
+out_vars <- c(
+  "PHQ_dep_dichot_total", "aggression_total", "tcu_hs_v2_total", "gad_7_total_v1", 
+  "uls_v2_total"
+)
+
+pred_vars <- c(
+  "dts_tolerance_v2", "dts_absorption_v2", "dts_appraisal_v2", 
+  "dts_regulation_v2"
+)
+
+# Put predictor variables in a form that is easy to convert into a formula for modeling
+pred_vars_mod <- paste(pred_vars, collapse = " + ")
+
+confounders <- c(
+  "age", "gender_v1_f", "race_eth_4_cat_f", "high_school_grad_f", 
+  "homeless_current_total"
+)
+
+# Put confounders in a form that is easy to convert into a formula for modeling
+confounders_mod <- paste(confounders, collapse = " + ")
+
+# Combine predictor variables and confounders to form the right-hand side of 
+# the model formula
+rhs <- paste(pred_vars_mod, confounders_mod, sep = " + ")
+```
+
+### Helper function: 
+
+```{r}
+tidy_lm <- function(.y, .rhs, .data) {
+  # Create a formula for the model function
+  f <- as.formula(paste(.y, .rhs, sep = " ~ "))
+  # Fit the model
+  m <- lm(f, data = .data)
+  # Tidy the output
+  m %>%
+    broom::tidy() %>% 
+    # Just keep the coefficients for the dts subscales
+    filter(str_detect(term, "dts")) %>% 
+    # Make it clear which outcome is being modeled
+    mutate(outcome = .y) %>% 
+    # Round estimates and p values
+    mutate(across(estimate:p.value, ~round(.x, 4))) %>% 
+    # Keep and reorder columns of interest
+    select(outcome, term, estimate, p.value)
+}
+
+# For testing
+# tidy_lm(out_vars[1], rhs, dts_df)
+```
+
+### Run unadjusted models
+
+2021-07-14, Jordan Neil: For Jillian’s paper, can you send me the output for the 4 DTS models? I don’t use R, but can you create an R markdown file with output that includes the full model diagnostics (e.g., R2, adjusted and unadjusted estimates for DTS and covariates), I can write that up in-text.
+
+```{r}
+# For testing
+# lm(PHQ_dep_dichot_total ~ dts_tolerance_v2 + dts_absorption_v2 + dts_appraisal_v2 + dts_regulation_v2, data = dts_df) 
+```
+
+```{r}
+# For testing
+# tidy_lm("PHQ_dep_dichot_total", pred_vars_mod, dts_df)
+```
+
+```{r}
+models_unadj <- map_df(
+  .x = out_vars,
+  .f = ~ tidy_lm(.x, pred_vars_mod, dts_df)
+)
+```
+
+```{r}
+model_diagnostics_unadj <- map_df(
+  .x = out_vars,
+  .f = function(x) {
+    # Create a formula for the model function
+    f <- as.formula(paste(x, pred_vars_mod, sep = " ~ "))
+    # Fit the model
+    m <- lm(f, data = dts_df)
+    # Create data frame of model diagnostics 
+    d <- broom::glance(m) %>% 
+      # Add the outcome var to the table of output
+      mutate(outcome = x) %>% 
+      select(outcome, everything()) %>% 
+      # Round estimates and p values
+      mutate(across(c(r.squared:p.value, logLik:deviance), ~round(.x, 4)))
+    d
+  }
+)
+```
+
+### Run Adjusted models
+
+```{r}
+# For testing
+# lm(PHQ_dep_dichot_total ~ dts_tolerance_v2 + dts_absorption_v2 + dts_appraisal_v2 + dts_regulation_v2 + age + gender_v1_f + race_eth_4_cat_f + high_school_grad_f + homeless_current_total, dts_df)
+```
+
+```{r}
+# For testing
+# tidy_lm("PHQ_dep_dichot_total", rhs, dts_df)
+```
+
+```{r}
+models_adj <- map_df(
+  .x = out_vars,
+  .f = ~ tidy_lm(.x, rhs, dts_df)
+)
+```
+
+```{r}
+model_diagnostics_adj <- map_df(
+  .x = out_vars,
+  .f = function(x) {
+    # Create a formula for the model function
+    f <- as.formula(paste(x, rhs, sep = " ~ "))
+    # Fit the model
+    m <- lm(f, data = dts_df)
+    # Create data frame of model diagnostics 
+    d <- broom::glance(m) %>% 
+      # Add the outcome var to the table of output
+      mutate(outcome = x) %>% 
+      select(outcome, everything()) %>% 
+      # Round estimates and p values
+      mutate(across(c(r.squared:p.value, logLik:deviance), ~round(.x, 4)))
+    d
+  }
+)
+```
+
+All models adjusted for age, sex, race/ethnicity, education (<HS/HS+), and Length of current homelessness.
+
+### Make variable names easier for end users to read
+
+```{r}
+models_unadj <- models_unadj %>% 
+  mutate(
+    term = case_when(
+      term == "dts_tolerance_v2" ~ "DTS: Tolerance",
+      term == "dts_absorption_v2" ~ "DTS: Absorption",
+      term == "dts_appraisal_v2" ~ "DTS: Appraisal",
+      term == "dts_regulation_v2" ~ "DTS: Regulation"
+    )
+  ) %>%
+  rename(Predictor = term, Estimate = estimate, p = p.value)
+```
+
+
+```{r}
+models_adj <- models_adj %>% 
+  mutate(
+    term = case_when(
+      term == "dts_tolerance_v2" ~ "DTS: Tolerance",
+      term == "dts_absorption_v2" ~ "DTS: Absorption",
+      term == "dts_appraisal_v2" ~ "DTS: Appraisal",
+      term == "dts_regulation_v2" ~ "DTS: Regulation"
+    )
+  ) %>%
+  rename(Predictor = term, Estimate = estimate, p = p.value)
+```
+
+### Join adjusted and unadjusted models
+
+Make it so the unadjusted estimate and p-value are placed next the the adjusted estimate and p-value in the table.
+
+```{r}
+models_unadj_and_adj <- models_unadj %>% 
+  left_join(models_adj, by = c("outcome", "Predictor")) %>% 
+  rename(
+    `Unadjusted Coef` = Estimate.x, `Unadjusted p` = p.x,
+    `Adjusted Coef` = Estimate.y, `Adjusted p` = p.y
+  )
+```
+
+
+### Helper function: make_ft
+
+```{r}
+make_ft <- function(.y, .data) {
+  .data %>% 
+    filter(outcome == .y) %>% 
+    select(-outcome) %>%
+    flextable() %>% 
+    set_table_properties(layout = "autofit") %>% 
+    # Change font to times new roman
+    font(fontname = "Times New Roman", part = "all") %>% 
+    # Conditionally format p < 0.05 to green
+    color(i = ~ `Unadjusted p` < 0.05, j = 3, color = "#458B00") %>% 
+    color(i = ~ `Adjusted p` < 0.05, j = 5, color = "#458B00")
+}
+
+# For testing
+# make_ft("PHQ_dep_dichot_total", models_unadj_and_adj)
+```
+
+```{r}
+make_ft_diag <- function(.y, .data) {
+  .data %>% 
+    filter(outcome == .y) %>% 
+    select(-outcome) %>%
+    flextable() %>% 
+    set_table_properties(layout = "autofit") %>% 
+    # Change font to times new roman
+    font(fontname = "Times New Roman", part = "all") 
+}
+
+# For testing
+# make_ft_diag("PHQ_dep_dichot_total", model_diagnostics_unadj)
+```
+
+# 📝Load analysis report template for officer
+
+```{r}
+dts_report <- read_docx("docs/template_dts_tables.docx") %>% 
+  body_replace_text_at_bkm("date", as.character(Sys.Date()))
+```
+
+### Create flextables
+
+And add to Word bookmarks
+
+#### Table 1
+
+Continuous
+
+```{r}
+flextable(table_1_cont) %>% 
+  set_table_properties(layout = "autofit") %>% 
+  # Change font to times new roman
+  font(fontname = "Times New Roman", part = "all") %>% 
+  # Make it easier to read
+  
+```
+
+
+```{r}
+# Models
+walk2(
+  .x = out_vars,
+  # Bookmark names for Word document
+  .y = c(
+    "table_depression", "table_aggression", "table_hostility", "table_anxiety",
+    "table_uls"
+  ),
+  .f = function(x, y) {
+    ft <- make_ft(x, models_unadj_and_adj)
+    out <- get("dts_sub_report", envir = .GlobalEnv)
+    out <- out %>% 
+      body_replace_flextable_at_bkm(y, ft)
+    assign("dts_sub_report", out, envir = .GlobalEnv)
+  }
+)
+```
+
+```{r}
+# Unadjusted model diagnostics tables
+walk2(
+  .x = out_vars,
+  # Bookmark names for Word document
+  .y = c(
+    "table_depression_diag_unadj", "table_aggression_diag_unadj", 
+    "table_hostility_diag_unadj", "table_anxiety_diag_unadj", 
+    "table_uls_diag_unadj"
+  ),
+  .f = function(x, y) {
+    ft <- make_ft_diag(x, model_diagnostics_unadj)
+    out <- get("dts_sub_report", envir = .GlobalEnv)
+    out <- out %>% 
+      body_replace_flextable_at_bkm(y, ft)
+    assign("dts_sub_report", out, envir = .GlobalEnv)
+  }
+)
+```
+
+```{r}
+# Adjusted model diagnostics tables
+walk2(
+  .x = out_vars,
+  # Bookmark names for Word document
+  .y = c(
+    "table_depression_diag_adj", "table_aggression_diag_adj", 
+    "table_hostility_diag_adj", "table_anxiety_diag_adj", 
+    "table_uls_diag_adj"
+  ),
+  .f = function(x, y) {
+    ft <- make_ft_diag(x, model_diagnostics_adj)
+    out <- get("dts_sub_report", envir = .GlobalEnv)
+    out <- out %>% 
+      body_replace_flextable_at_bkm(y, ft)
+    assign("dts_sub_report", out, envir = .GlobalEnv)
+  }
+)
+```
+
+# 📌Generate Word reports
+
+```{r}
+print(
+  dts_report, 
+  "docs/DTS Analysis Report.docx"
+)
+```
+
+```{r}
+print(
+  dts_sub_report, 
+  "docs/DTS Subscale Analysis Report.docx"
+)
+```
+
+
+
+

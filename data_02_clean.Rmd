@@ -25,8 +25,9 @@ Eventually, it would be nice to use the single, complete analysis data set that 
 # 📦Load packages
 
 ```{r message=FALSE}
-library(dplyr)
-library(haven)
+library(dplyr, warn.conflicts = FALSE)
+library(haven, warn.conflicts = FALSE)
+library(readr, warn.conflicts = FALSE)
 ```
 
 # 🌎Connect to UTH server 
@@ -41,10 +42,18 @@ open 'smb://islgpcifs.uthouston.edu/sph_research/Link2Care/'
 Below, we run the file, data_survey_01_import.Rmd, which is used to import the Link2Care follow-up visit survey data and do some initial data cleaning (e.g., create calculated variables).
 
 ```{r message=FALSE}
-source("source_rmd.R")
+source("R/source_rmd.R")
 source_rmd("data_survey_01_import.Rmd")
 rm(source_rmd)
-# 264 rows and 2855 columns
+# 2021-11-09: v1 imported with 324 rows and 810 columns.
+# 2021-11-09: v2 imported with 299 rows and 213 columns.
+# 2021-11-09: v3 imported with 214 rows and 542 columns.
+# 2021-11-09: v4 imported with 155 rows and 598 columns.
+# 2021-11-09: v5 imported with 137 rows and 649 columns.
+# 2021-11-09: REDCap imported with 24 rows and 3 columns.
+# 2021-11-09: Master log screened in imported with 327 rows and 41 columns.
+# 2021-11-09: 328 participants have been randomized to a treatment group.
+# 2021-11-09: The all_visits data frame was created and cleaned in data_survey_01_import.Rds with 325 rows and 2924 columns.
 ```
 
 
@@ -68,12 +77,13 @@ dts_df <- all_visits %>%
     ise_appraisal_v1, ise_belonging_v1, ise_tangable_v1, age, gender_v1_f, 
     race, race_f, hispanic, hispanic_f, edu_19_cat, edu_19_cat_f, 
     homeless_current_total, homeless_time_total, dts_tolerance_v2,
-    dts_absorption_v2, dts_appraisal_v2, dts_regulation_v2
+    dts_absorption_v2, dts_appraisal_v2, dts_regulation_v2, mms_total,
+    homeless_mental_treatment_f, phq_8_total, phq_8_gt_10_f
   )
 ```
 
 ```{r}
-dim(dts_df) # 264  31
+dim(dts_df) # 325  35
 ```
 
 ## Filter out rows in the table
@@ -82,19 +92,25 @@ dim(dts_df) # 264  31
 
 2021-01-20: Michael said to consider visit 2 answers to be "baseline" answers for questions that weren't asked at visit 1.
 
-Select people who were randomized only
+Select people who were randomized only. First, coerce group to a factor. 
 
 ```{r}
 dts_df <- dts_df %>% 
-  filter(group %in% 1:3)
+  mutate(group = factor(group, c("UCM", "UCM+SP", "L2C")))
 ```
 
 ```{r}
-dim(dts_df) # 245  31
+dts_df <- dts_df %>% 
+  filter(group %in% c("UCM", "UCM+SP", "L2C"))
+```
+
+```{r}
+dim(dts_df) # 298  35
 ```
 
 **NOTE on number of randomized people**
 2021-03-16: When we import the data above, it says that 250 were randomized. However, there are only 245 people remaining when we filter out people who are not assigned to a group in the data above. I did some digging in data_survey_01_import.Rmd, and found that there are 5 people in the Master Log (2265, 2266, 2267, 2268, 2269) that don't appear in the QDS data. It appears as though this is just because the QDS data hasn't been downloaded recently. I'm going to just push ahead for now.
+
 
 ## 🧮Recode/calculate variables
 
@@ -135,13 +151,29 @@ dts_df <- dts_df %>%
   )
 ```
 
+```{r}
+dim(dts_df) # 298  40
+```
+
 
 # Export analysis data
 
-Export the analysis data and upload it to Kiteworks.
+Export the analysis data as an SPSS data file for Michael and upload it to Kiteworks and the U drive.
+
+We also need to export and rds file to use for analysis in R. Otherwise, the factors are lost.
 
 ```{r}
-write_sav(dts_df, "data/dts_paper.sav")
+write_sav(
+  dts_df, 
+  "/Volumes/Link2Care/Statistical Projects/Robison - Distress Tolerance Scale Paper/dts_paper.sav"
+)
+```
+
+```{r}
+write_rds(
+  dts_df, 
+  "/Volumes/Link2Care/Statistical Projects/Robison - Distress Tolerance Scale Paper/dts_paper.rds"
+)
 ```
 
 

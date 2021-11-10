@@ -25,7 +25,7 @@ Hi Michael. Here are the analyses that we would like you to run for the first Li
 
 **NOTE on source data**
 
-Eventually, it would be nice to use the single, complete analysis dataset that we are creating. For now, there is a ton of data management in this code.
+Eventually, it would be nice to use the single, complete analysis data set that we are creating. For now, there is a ton of data management in this code.
 
 
 # 📦Load packages
@@ -89,11 +89,11 @@ walk(
 # These are expected to change over time as we add more people to the study.
 # However, drastic changes from month-to-month, or even quarter-to-quarter,
 # should initiate an investigation into what's going on.
-# 2021-03-16: v1 imported with 264 rows and 803 columns.
-# 2021-03-16: v2 imported with 247 rows and 199 columns.
-# 2021-03-16: v3 imported with 180 rows and 526 columns.
-# 2021-03-16: v4 imported with 137 rows and 582 columns.
-# 2021-03-16: v5 imported with 129 rows and 630 columns.
+# 2021-11-04: v1 imported with 324 rows and 810 columns.
+# 2021-11-04: v2 imported with 299 rows and 213 columns.
+# 2021-11-04: v3 imported with 214 rows and 542 columns.
+# 2021-11-04: v4 imported with 155 rows and 598 columns.
+# 2021-11-04: v5 imported with 137 rows and 649 columns.
 ```
 
 **NOTE on converting to lowercase:** Don't convert to lowercase in this script. Leaving the column names in uppercase makes it easier to use the Word code book and the SPSS code that Michael wrote. The variables that I'm creating and using for analysis are all given lower, snake case names anyway. It should be the case that any variable that isn't in lowercase is a variable I'm not using in analysis.
@@ -115,7 +115,7 @@ cat(
   "REDCap imported with", nrow(redcap), "rows and", ncol(redcap), "columns.\n"
 )
 
-# 2021-03-16: REDCap imported with 12 rows and 3 columns.
+# 2021-11-04: REDCap imported with 24 rows and 3 columns.
 ```
 
 ## Import Excel master log
@@ -158,7 +158,7 @@ cat(
   "columns.\n"
 )
 
-# 2021-11-04: Master log screened in imported with 325 rows and 41 columns.
+# 2021-11-04: Master log screened in imported with 326 rows and 41 columns.
 ```
 
 ```{r}
@@ -289,7 +289,6 @@ redcap %>%
 Manually fill in data values in the QDS data.
 
 ```{r}
-# Do it this way instead of with dplyr, so you don't have to mess with class
 group_qds <- group_qds %>% 
   add_row(id = 2252, group = 2) %>% 
   add_row(id = 2253, group = 3) %>%
@@ -317,22 +316,33 @@ if (nrow(check_qds_redcap_group_diffs) > 0) {
 }
 ```
 
+### Coerce QDS group variable to character
+
+Currently, group is a numeric variable in QDS. We will convert it to character so that (1) it's easier to read, and (2) it's easier to check against the Master Log group values in the step below. 
+
+```{r}
+group_qds <- group_qds %>% 
+  mutate(
+    # To prevent type mismatch error
+    id = as.character(id),
+    group = case_when(
+      group == 1 ~ "UCM",
+      group == 2 ~ "UCM+SP",
+      group == 3 ~ "L2C"
+    )
+  )
+```
+
 ### Master log: Supplement with Excel master log data
 
 Manually check for differences between group assignment in QDS and master log.
 
 ```{r}
-check_qds_ml_group_diffs <- master_log %>%
-  left_join(
-    group_qds %>% 
-      select(id, group) %>% 
-      # To prevent type mismatch error:
-      mutate(id = as.character(id)),
-    by = "id",
-    suffix = c("_ml", "_qds")
-  ) %>% 
+check_qds_ml_group_diffs <- master_log_screened_in %>%
+  left_join(group_qds, by = "id", suffix = c("_ml", "_qds")) %>% 
   rowwise() %>% 
-  filter(length(unique(c_across(group_ml:group_qds))) > 1)
+  filter(length(unique(c_across(c(group_ml, group_qds)))) > 1) %>% 
+  select(id, group_ml, group_qds) 
 ```
 
 There are a bunch of id's with group membership data in master log, but not in QDS. Mostly, because these people haven't completed a v3 in QDS yet. We will go ahead and fill in the missing group data from the master log.
@@ -355,9 +365,7 @@ Now there are no "conflicts" between group in the QDS data and group in the mast
 group_qds <- group_qds %>% 
   bind_rows(
     check_qds_ml_group_diffs %>% 
-      select(id, group = group_ml) %>% 
-      # To prevent type mismatch error:
-      mutate(id = as.numeric(id))
+      select(id, group = group_ml)
   ) %>% 
   arrange(id)
 ```
@@ -375,7 +383,7 @@ cat(
   "participants have been randomized to a treatment group.\n"
 )
 
-# 2021-03-16: 250 participants have been randomized to a treatment group.
+# 2021-11-04: 327 participants have been randomized to a treatment group.
 ```
 
 At this point, each person who was assigned to a group should have one, and only one, group value.
@@ -384,7 +392,8 @@ At this point, each person who was assigned to a group should have one, and only
 rm(
   check_qds_group_values, check_qds_ml_group_diffs, 
   check_qds_ml_group_diffs_not_na, check_qds_redcap_group_diffs, 
-  check_redcap_group_values, group_qds_long, master_log, redcap, n_randomized
+  check_redcap_group_values, group_qds_long, master_log_screened_in, redcap, 
+  n_randomized
 )
 ```
 
@@ -460,7 +469,7 @@ all_visits <- v1 %>%
 # exist in the v1 data.
 # Also, any changes to the number of columns should initiate an investigation
 # into why.
-dim(all_visits) # 264 2736
+dim(all_visits) # 324 2808
 ```
 
 ```{r}
@@ -473,7 +482,8 @@ Add the group membership variable we created above.
 
 ```{r}
 all_visits <- all_visits %>% 
-  left_join(group_qds, by = c("SUBJECT" = "id"))
+  mutate(id = as.character(SUBJECT)) %>% 
+  left_join(group_qds, by = "id")
 ```
 
 ```{r}
@@ -482,19 +492,19 @@ all_visits <- all_visits %>%
 # exist in the v1 data.
 # Also, any changes to the number of columns should initiate an investigation
 # into why.
-dim(all_visits) # 264 2737
+dim(all_visits) # 325 2810
 ```
 
 ```{r}
 rm(group_qds)
 ```
 
-## Create an id variable
+## Reorder the columns
 
-We will use participant id (currently called "SUBJECT") a lot for data cleaning and analysis. Let's convert it to the lowercase name "id" and make it the first column in the data.
+We will use participant id a lot for data cleaning and analysis. Let's make it the first column in the data.
 
 ```{r}
-all_visits <- select(all_visits, id = SUBJECT, group, everything())
+all_visits <- select(all_visits, id, group, everything())
 ```
 
 ## Remove columns of missing data
@@ -512,7 +522,7 @@ all_visits <- all_visits %>%
 ```
 
 ```{r}
-ncol(all_visits) # 2713. So, 2737 - 2713 = 24 columns dropped.
+ncol(all_visits) # 2782 So, 2810 - 2782 = 28 columns dropped.
 ```
 
 ## 🧮Recode/calculate variables by section
@@ -2428,6 +2438,15 @@ cat("The number of rows will change over time as we recruit people. However, we 
 cat("Also, any changes to the number of columns should initiate an investigation into why.")
 
 # 2021-01-28: The all_visits data frame was created and cleaned in data_survey_01_import.Rds with 263 rows and 2850 columns.
+```
+
+
+# 💾Save the data frames
+
+```{r}
+readr::write_rds(
+  all_visits, "/Volumes/Link2Care/Statistical Projects/Robison - Distress Tolerance Scale Paper/all_visits_import.rds"
+)
 ```
 
 
