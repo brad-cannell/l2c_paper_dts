@@ -19,6 +19,7 @@ library(stringr, warn.conflicts = FALSE)
 library(officer, warn.conflicts = FALSE)
 library(flextable, warn.conflicts = FALSE)
 library(broom)
+library(ggplot2, warn.conflicts = FALSE)
 ```
 
 # 🌎Connect to UTH server 
@@ -293,7 +294,9 @@ models_unadj_and_adj <- models_unadj %>%
 ```
 
 
-### Helper function: make_ft
+# 📄 Create Word results document
+
+## Flextable helper functions
 
 ```{r}
 make_ft <- function(.y, .data) {
@@ -301,7 +304,9 @@ make_ft <- function(.y, .data) {
     filter(outcome == .y) %>% 
     select(-outcome) %>%
     flextable() %>% 
-    set_table_properties(layout = "autofit") %>% 
+    # Column width: Trial and error
+    # Make a table and play with properties
+    width(width = c(1.51, 1.48, 1.2, 1.3, 1.02)) %>% 
     # Change font to times new roman
     font(fontname = "Times New Roman", part = "all") %>% 
     # Conditionally format p < 0.05 to green
@@ -313,45 +318,90 @@ make_ft <- function(.y, .data) {
 # make_ft("PHQ_dep_dichot_total", models_unadj_and_adj)
 ```
 
-```{r}
-make_ft_diag <- function(.y, .data) {
-  .data %>% 
-    filter(outcome == .y) %>% 
-    select(-outcome) %>%
-    flextable() %>% 
-    set_table_properties(layout = "autofit") %>% 
-    # Change font to times new roman
-    font(fontname = "Times New Roman", part = "all") 
-}
-
-# For testing
-# make_ft_diag("PHQ_dep_dichot_total", model_diagnostics_unadj)
-```
-
-# 📝Load analysis report template for officer
+## 📝Load analysis report template for officer
 
 ```{r}
 dts_report <- read_docx("docs/template_dts_tables.docx") %>% 
   body_replace_text_at_bkm("date", as.character(Sys.Date()))
 ```
 
-### Create flextables
+## Create flextables
 
 And add to Word bookmarks
 
-#### Table 1
+### Table 1
 
-Continuous
+Add overall N
 
 ```{r}
-flextable(table_1_cont) %>% 
-  set_table_properties(layout = "autofit") %>% 
-  # Change font to times new roman
-  font(fontname = "Times New Roman", part = "all") %>% 
-  # Make it easier to read
-  
+dts_report <- dts_report %>% 
+  body_replace_text_at_bkm("n_total", as.character(nrow(dts_df)))
 ```
 
+Continuous vars
+
+```{r}
+table_1_cont_ft <- table_1_cont %>% 
+  # Make it easier to read
+  mutate(var = case_when(
+    var == "age" ~ "Age (years)",
+    var == "mms_total" ~ "MMSE Total Score",
+    var == "homeless_current_total" ~ "Current total time homeless (months)",
+    var == "phq_8_total" ~ "PHQ-8 score",
+    var == "gad_7_total_v1" ~ "GAD-7 total score",
+    var == "aggression_total" ~ "Aggression questionnaire total score",
+    var == "uls_v2_total" ~ "Urban Life Stress Scale total score",
+    var == "dts_total_v2" ~ "Distress Tolerance Scale total score",
+    var == "dts_tolerance_v2" ~ "Tolerance",
+    var == "dts_appraisal_v2" ~ "Appraisal",
+    var == "dts_regulation_v2" ~ "Regulation",
+    var == "dts_absorption_v2" ~ "Absorption"
+  )) %>% 
+  rename(Variable = var, `Mean (SD)` = stats) %>% 
+  flextable() %>%
+  # Change font to times new roman
+  font(fontname = "Times New Roman", part = "all") %>% 
+  # Column width: Trial and error
+  # Make a table and play with properties
+  width(width = c(4.85, 1.65))
+```
+
+Add to flextable
+
+```{r}
+dts_report <- dts_report %>% 
+  body_replace_flextable_at_bkm("table_1_cont", table_1_cont_ft)
+```
+
+Categorical vars
+
+```{r}
+table_1_cat_ft <- table_1_cat %>%
+  # Make it easier to read
+  mutate(var = case_when(
+    var == "gender_v1_f" ~ "Gender",
+    var == "race_eth_4_cat_f" ~ "Race/Ethnicity",
+    var == "high_school_grad_f" ~ "Completed high school education",
+    var == "homeless_mental_treatment_f" ~ "Currently receiving treatment for mental health problems",
+    var == "phq_8_gt_10_f" ~ "PHQ-8 Score greater than 10"
+  )) %>% 
+  rename(Variable = var, Category = cat, `n (%)` = stats) %>% 
+  flextable() %>%
+  # Change font to times new roman
+  font(fontname = "Times New Roman", part = "all") %>% 
+  # Column width: Trial and error
+  # Make a table and play with properties
+  width(width = c(3.81, 1.81, 0.88))
+```
+
+Add to flextable
+
+```{r}
+dts_report <- dts_report %>% 
+  body_replace_flextable_at_bkm("table_1_cat", table_1_cat_ft)
+```
+
+### DTS subscale models
 
 ```{r}
 # Models
@@ -364,67 +414,125 @@ walk2(
   ),
   .f = function(x, y) {
     ft <- make_ft(x, models_unadj_and_adj)
-    out <- get("dts_sub_report", envir = .GlobalEnv)
+    out <- get("dts_report", envir = .GlobalEnv)
     out <- out %>% 
       body_replace_flextable_at_bkm(y, ft)
-    assign("dts_sub_report", out, envir = .GlobalEnv)
+    assign("dts_report", out, envir = .GlobalEnv)
   }
 )
 ```
 
+### Explore outliers
+
+2021-11-09, From Jordan Neil: As the effect for model 5 is significantly in the inverse direction that we had hypothesized, we’re interested in whether you could 1) plot the means for the measure and the regression and 2) ascertain whether this sig association is spurious because of some extreme responses?
+
+#### Tolerance 
+
 ```{r}
-# Unadjusted model diagnostics tables
-walk2(
-  .x = out_vars,
-  # Bookmark names for Word document
-  .y = c(
-    "table_depression_diag_unadj", "table_aggression_diag_unadj", 
-    "table_hostility_diag_unadj", "table_anxiety_diag_unadj", 
-    "table_uls_diag_unadj"
-  ),
-  .f = function(x, y) {
-    ft <- make_ft_diag(x, model_diagnostics_unadj)
-    out <- get("dts_sub_report", envir = .GlobalEnv)
-    out <- out %>% 
-      body_replace_flextable_at_bkm(y, ft)
-    assign("dts_sub_report", out, envir = .GlobalEnv)
-  }
-)
+ggplot(dts_df) +
+  geom_boxplot(aes(y = uls_v2_total)) +
+  theme_bw()
+```
+
+#### Tolerance 
+
+```{r}
+ggplot(dts_df, aes(y = uls_v2_total, x = dts_tolerance_v2)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = 'y ~ x') + 
+  labs(
+    title = "Plot ULS Total by DTS Tolerance Subscale",
+    subtitle = "With regression line"
+  ) +
+  theme_bw()
+
+ggsave("img/tolerance_plot.png", width = 7.29, height = 4.51)
 ```
 
 ```{r}
-# Adjusted model diagnostics tables
-walk2(
-  .x = out_vars,
-  # Bookmark names for Word document
-  .y = c(
-    "table_depression_diag_adj", "table_aggression_diag_adj", 
-    "table_hostility_diag_adj", "table_anxiety_diag_adj", 
-    "table_uls_diag_adj"
-  ),
-  .f = function(x, y) {
-    ft <- make_ft_diag(x, model_diagnostics_adj)
-    out <- get("dts_sub_report", envir = .GlobalEnv)
-    out <- out %>% 
-      body_replace_flextable_at_bkm(y, ft)
-    assign("dts_sub_report", out, envir = .GlobalEnv)
-  }
-)
+dts_report <- dts_report %>% 
+  body_replace_img_at_bkm(
+    "tolerance_plot", 
+    external_img("img/tolerance_plot.png", width = 7, height = 4)
+  )
 ```
+
+#### Absorption 
+
+```{r}
+ggplot(dts_df, aes(y = uls_v2_total, x = dts_absorption_v2)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = 'y ~ x') + 
+  labs(
+    title = "Plot ULS Total by DTS Absorption Subscale",
+    subtitle = "With regression line"
+  ) +
+  theme_bw()
+
+ggsave("img/absorption_plot.png", width = 7.29, height = 4.51)
+```
+
+```{r}
+dts_report <- dts_report %>% 
+  body_replace_img_at_bkm(
+    "absorption_plot", 
+    external_img("img/absorption_plot.png", width = 7, height = 4)
+  )
+```
+
+#### Appraisal 
+
+```{r}
+ggplot(dts_df, aes(y = uls_v2_total, x = dts_appraisal_v2)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = 'y ~ x') + 
+  labs(
+    title = "Plot ULS Total by DTS Appraisal Subscale",
+    subtitle = "With regression line"
+  ) +
+  theme_bw()
+
+ggsave("img/appraisal_plot.png", width = 7.29, height = 4.51)
+```
+
+```{r}
+dts_report <- dts_report %>% 
+  body_replace_img_at_bkm(
+    "appraisal_plot", 
+    external_img("img/appraisal_plot.png", width = 7, height = 4)
+  )
+```
+
+#### Regulation 
+
+```{r}
+ggplot(dts_df, aes(y = uls_v2_total, x = dts_regulation_v2)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = 'y ~ x') + 
+  labs(
+    title = "Plot ULS Total by DTS Regulation Subscale",
+    subtitle = "With regression line"
+  ) +
+  theme_bw()
+
+ggsave("img/regulation_plot.png", width = 7.29, height = 4.51)
+```
+
+```{r}
+dts_report <- dts_report %>% 
+  body_replace_img_at_bkm(
+    "regulation_plot", 
+    external_img("img/regulation_plot.png", width = 7, height = 4)
+  )
+```
+
 
 # 📌Generate Word reports
 
 ```{r}
 print(
   dts_report, 
-  "docs/DTS Analysis Report.docx"
-)
-```
-
-```{r}
-print(
-  dts_sub_report, 
-  "docs/DTS Subscale Analysis Report.docx"
+  "docs/DTS Table Updates.docx"
 )
 ```
 
