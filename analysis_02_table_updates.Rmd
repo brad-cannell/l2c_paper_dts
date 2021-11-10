@@ -34,7 +34,7 @@ open 'smb://islgpcifs.uthouston.edu/sph_research/Link2Care/'
 The dts_paper.sav data is created in data_02_clean.Rmd
 
 ```{r}
-dts_df <- read_rds("/Volumes/Link2Care/Statistical Projects/Robison - Distress Tolerance Scale Paper/dts_paper.rds")
+dts_df <- read_rds("/Volumes/sph_research/Link2Care/Statistical Projects/Robison - Distress Tolerance Scale Paper/dts_paper.rds")
 ```
 
 ```{r}
@@ -318,6 +318,21 @@ make_ft <- function(.y, .data) {
 # make_ft("PHQ_dep_dichot_total", models_unadj_and_adj)
 ```
 
+```{r}
+make_ft_diag <- function(.y, .data) {
+  .data %>% 
+    filter(outcome == .y) %>% 
+    select(-outcome) %>%
+    flextable() %>% 
+    set_table_properties(layout = "autofit") %>% 
+    # Change font to times new roman
+    font(fontname = "Times New Roman", part = "all") 
+}
+
+# For testing
+# make_ft_diag("PHQ_dep_dichot_total", model_diagnostics_unadj)
+```
+
 ## 📝Load analysis report template for officer
 
 ```{r}
@@ -414,6 +429,46 @@ walk2(
   ),
   .f = function(x, y) {
     ft <- make_ft(x, models_unadj_and_adj)
+    out <- get("dts_report", envir = .GlobalEnv)
+    out <- out %>% 
+      body_replace_flextable_at_bkm(y, ft)
+    assign("dts_report", out, envir = .GlobalEnv)
+  }
+)
+```
+
+```{r}
+# Unadjusted model diagnostics tables
+walk2(
+  .x = out_vars,
+  # Bookmark names for Word document
+  .y = c(
+    "table_depression_diag_unadj", "table_aggression_diag_unadj", 
+    "table_hostility_diag_unadj", "table_anxiety_diag_unadj", 
+    "table_uls_diag_unadj"
+  ),
+  .f = function(x, y) {
+    ft <- make_ft_diag(x, model_diagnostics_unadj)
+    out <- get("dts_report", envir = .GlobalEnv)
+    out <- out %>% 
+      body_replace_flextable_at_bkm(y, ft)
+    assign("dts_report", out, envir = .GlobalEnv)
+  }
+)
+```
+
+```{r}
+# Adjusted model diagnostics tables
+walk2(
+  .x = out_vars,
+  # Bookmark names for Word document
+  .y = c(
+    "table_depression_diag_adj", "table_aggression_diag_adj", 
+    "table_hostility_diag_adj", "table_anxiety_diag_adj", 
+    "table_uls_diag_adj"
+  ),
+  .f = function(x, y) {
+    ft <- make_ft_diag(x, model_diagnostics_adj)
     out <- get("dts_report", envir = .GlobalEnv)
     out <- out %>% 
       body_replace_flextable_at_bkm(y, ft)
