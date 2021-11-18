@@ -7,6 +7,19 @@ date: "2021-11-09 <br> Updated: `r Sys.Date()`"
 
 On 2021-11-08, we decided to update the tables used in the paper. The analyses run in analysis_01_report.Rmd were overkill for that purpose.
 
+# Instructions
+
+Connect to UTH server, then run all chunks below. The result is DTS Table Updates.docx.
+
+
+# 🌎Connect to UTH server 
+
+```{bash eval=FALSE}
+# Don't drill all the way down to live documents because not all of the data is in live documents.
+open 'smb://islgpcifs.uthouston.edu/sph_research/Link2Care/'
+```
+
+
 # 📦Load packages
 
 ```{r message=FALSE}
@@ -22,19 +35,13 @@ library(broom)
 library(ggplot2, warn.conflicts = FALSE)
 ```
 
-# 🌎Connect to UTH server 
-
-```{bash eval=FALSE}
-# Don't drill all the way down to live documents because not all of the data is in live documents.
-open 'smb://islgpcifs.uthouston.edu/sph_research/Link2Care/'
-```
 
 # 📥Import data 
 
 The dts_paper.sav data is created in data_02_clean.Rmd
 
 ```{r}
-dts_df <- read_rds("/Volumes/sph_research/Link2Care/Statistical Projects/Robison - Distress Tolerance Scale Paper/dts_paper.rds")
+dts_df <- read_rds("/Volumes/Link2Care/Statistical Projects/Robison - Distress Tolerance Scale Paper/dts_paper.rds")
 ```
 
 ```{r}
@@ -48,7 +55,9 @@ dim(dts_df) # 298  40
 
 ### Continuous variables
 
-Calculate the mean and SD for all continuous variables in table 1.
+2021-11-17, from Jordan Neil: Can you re-run and provide a median value for current time spent homeless? The SD is almost double the M. What do you normally include to report dispersion with Mdn? IQR? Or still SD? Whatever you prefer, can you please include with the Mdn?
+
+Calculate the median and iqr for homeless_current_total. Calculate the mean and SD for all other continuous variables in table 1.
 
 ```{r}
 table_1_cont <- dts_df %>% 
@@ -56,14 +65,14 @@ table_1_cont <- dts_df %>%
   summarise(
     across(
       .cols = c(
-        age, mms_total, homeless_current_total, phq_8_total, gad_7_total_v1,
+        age, mms_total, phq_8_total, gad_7_total_v1,
         aggression_total, uls_v2_total, dts_total_v2, dts_tolerance_v2,
         dts_appraisal_v2, dts_regulation_v2, dts_absorption_v2
       ),
       .fns = function(x) {
         mean <- mean(x, na.rm = TRUE) %>% round(1) %>% format(nsmall = 1)
-        sd <- sd(x, na.rm = TRUE) %>% round(1) %>% format(nsmall = 1)
-        out <- paste0(mean, " (", sd, ")")
+        sd   <- sd(x, na.rm = TRUE) %>% round(1) %>% format(nsmall = 1)
+        out  <- paste0(mean, " (", sd, ")")
         out
       }
     )
@@ -74,6 +83,27 @@ table_1_cont <- dts_df %>%
    names_to = "var",
    values_to = "stats"
   )
+```
+
+2021-11-17, from Jordan Neil: Can you re-run and provide a median value for current time spent homeless? The SD is almost double the M. What do you normally include to report dispersion with Mdn? IQR? Or still SD? Whatever you prefer, can you please include with the Mdn?
+
+```{r}
+table_1_homeless_time <- dts_df %>%
+  # Calculate median and iqr for homeless_current_total
+  summarise(
+    var    = "homeless_current_total",
+    median = median(homeless_current_total) %>% round(1) %>% format(nsmall = 1),
+    iqr    = IQR(homeless_current_total)%>% round(1) %>% format(nsmall = 1),
+    stats  = paste0(median, " (", iqr, ")")
+  ) %>% 
+  select(var, stats)
+```
+
+Append table_1_homeless_time to table_1_cont
+
+```{r}
+table_1_cont <- table_1_cont %>% 
+  bind_rows(table_1_homeless_time)
 ```
 
 
@@ -144,7 +174,7 @@ confounders_mod <- paste(confounders, collapse = " + ")
 rhs <- paste(pred_vars_mod, confounders_mod, sep = " + ")
 ```
 
-### Helper function: 
+### Helper function: tidy models
 
 ```{r}
 tidy_lm <- function(.y, .rhs, .data) {
@@ -160,7 +190,12 @@ tidy_lm <- function(.y, .rhs, .data) {
     # Make it clear which outcome is being modeled
     mutate(outcome = .y) %>% 
     # Round estimates and p values
-    mutate(across(estimate:p.value, ~round(.x, 4))) %>% 
+    mutate(
+      across(
+        estimate:p.value, 
+        ~ format(round(.x, 4), nsmall = 4)
+      )
+    ) %>% 
     # Keep and reorder columns of interest
     select(outcome, term, estimate, p.value)
 }
@@ -175,7 +210,9 @@ tidy_lm <- function(.y, .rhs, .data) {
 
 ```{r}
 # For testing
-# lm(PHQ_dep_dichot_total ~ dts_tolerance_v2 + dts_absorption_v2 + dts_appraisal_v2 + dts_regulation_v2, data = dts_df) 
+# m_test <- lm(PHQ_dep_dichot_total ~ dts_tolerance_v2 + dts_absorption_v2 + dts_appraisal_v2 + dts_regulation_v2, data = dts_df)
+# summary(m_test)
+# glance(m_test)
 ```
 
 ```{r}
@@ -204,7 +241,12 @@ model_diagnostics_unadj <- map_df(
       mutate(outcome = x) %>% 
       select(outcome, everything()) %>% 
       # Round estimates and p values
-      mutate(across(c(r.squared:p.value, logLik:deviance), ~round(.x, 4)))
+      mutate(
+        across(
+          c(r.squared:p.value, logLik:deviance), 
+          ~ format(round(.x, 4), nsmall = 4)
+        )
+      )
     d
   }
 )
@@ -243,7 +285,12 @@ model_diagnostics_adj <- map_df(
       mutate(outcome = x) %>% 
       select(outcome, everything()) %>% 
       # Round estimates and p values
-      mutate(across(c(r.squared:p.value, logLik:deviance), ~round(.x, 4)))
+      mutate(
+        across(
+          c(r.squared:p.value, logLik:deviance), 
+          ~ format(round(.x, 4), nsmall = 4)
+        )
+      )
     d
   }
 )
@@ -324,9 +371,13 @@ make_ft_diag <- function(.y, .data) {
     filter(outcome == .y) %>% 
     select(-outcome) %>%
     flextable() %>% 
-    set_table_properties(layout = "autofit") %>% 
+    # Get width with trial and error
+    width(width = c(
+      0.59, 0.77, 0.48, 0.52, 0.5, 0.25, 0.52, 0.57, 0.63, 0.63, 0.66, 0.38
+    )) %>% 
     # Change font to times new roman
-    font(fontname = "Times New Roman", part = "all") 
+    font(fontname = "Times New Roman", part = "all") %>% 
+    fontsize(part = "all", size = 8)
 }
 
 # For testing
@@ -359,20 +410,20 @@ Continuous vars
 table_1_cont_ft <- table_1_cont %>% 
   # Make it easier to read
   mutate(var = case_when(
-    var == "age" ~ "Age (years)",
-    var == "mms_total" ~ "MMSE Total Score",
-    var == "homeless_current_total" ~ "Current total time homeless (months)",
-    var == "phq_8_total" ~ "PHQ-8 score",
-    var == "gad_7_total_v1" ~ "GAD-7 total score",
-    var == "aggression_total" ~ "Aggression questionnaire total score",
-    var == "uls_v2_total" ~ "Urban Life Stress Scale total score",
-    var == "dts_total_v2" ~ "Distress Tolerance Scale total score",
-    var == "dts_tolerance_v2" ~ "Tolerance",
-    var == "dts_appraisal_v2" ~ "Appraisal",
-    var == "dts_regulation_v2" ~ "Regulation",
-    var == "dts_absorption_v2" ~ "Absorption"
+    var == "age" ~ "Age (years), mean (SD)",
+    var == "mms_total" ~ "MMSE Total Score, mean (SD)",
+    var == "homeless_current_total" ~ "Current total time homeless (months), median (IQR)",
+    var == "phq_8_total" ~ "PHQ-8 score, mean (SD)",
+    var == "gad_7_total_v1" ~ "GAD-7 total score, mean (SD)",
+    var == "aggression_total" ~ "Aggression questionnaire total score, mean (SD)",
+    var == "uls_v2_total" ~ "Urban Life Stress Scale total score, mean (SD)",
+    var == "dts_total_v2" ~ "Distress Tolerance Scale total score, mean (SD)",
+    var == "dts_tolerance_v2" ~ "Tolerance, mean (SD)",
+    var == "dts_appraisal_v2" ~ "Appraisal, mean (SD)",
+    var == "dts_regulation_v2" ~ "Regulation, mean (SD)",
+    var == "dts_absorption_v2" ~ "Absorption, mean (SD)"
   )) %>% 
-  rename(Variable = var, `Mean (SD)` = stats) %>% 
+  rename(Variable = var, Statistics = stats) %>% 
   flextable() %>%
   # Change font to times new roman
   font(fontname = "Times New Roman", part = "all") %>% 
