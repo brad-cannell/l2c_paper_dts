@@ -642,6 +642,55 @@ print(
 )
 ```
 
+# Jordan's questions
+
+2022-02-17
+
+1. How was race coded in the models (i.e, which race was used as the reference condition)?
+
+```{r}
+tidy(lm(PHQ_dep_dichot_total ~ dts_tolerance_v2 + dts_absorption_v2 + dts_appraisal_v2 + dts_regulation_v2 + race_eth_4_cat_f, dts_df))
+```
+
+The reference category is white, non-Hispanic.
+
+2. How was gender coded (i.e., how were the 4 “Other” responses coded)?
+
+```{r}
+# # We used gender at visit 1
+# v1 <- read_spss("/Volumes/Link2Care/Participant Data/SPSS Data/QDS Data/Visit_1_Data.SAV")
+# Look at gender
+v1$GENDER
+```
+
+So, I didn't recode this. There was an actual "other" option in QDS. I doubled checked the Word code book. There was an other option. 
+
+3. Co-authors asked for description of how the N jumps from 298 to 244 for the key variables and what, if any, imputation was conducted.
+
+I think this comment is referring to the note at the bottom of Table 1 that says, "N=244 except for: completed formal education (n=227)". I didn't write that note. The document that my analysis script creates is called "DTS Table Updates.docx" (attached). It shows that the total number of rows in the data frame is 298. The gender variable, for example, has 256 men + 28 women + 4 other = 298 people. And "DTS Table Updates.docx" doesn't have N's for continuous variables, which appear to be the variables marked with an asterisk. So, I'm not sure where that came from. 
+
+4. We report linear regressions throughout but the measurement info for some of the scales reported clinical cut-offs. Was this a typo that had been included from other text?
+
+All modeling was done via linear regression. The outcome variables were depressive symptoms, aggression, hostility, anxiety, and urban life stress. All were treated as continuous variables. I can certainly dichotomize them and use a logistic model instead, but so far I haven't been asked to do so. Somebody with subject matter knowledge (perhaps Michael) will need to make that decision. 
+
+5. In Table 1, it’s looks like hostility, as a measure, is not reported? Is that correct?
+
+```{r}
+dts_df %>% 
+  summarise(
+    mean = mean(tcu_hs_v2_total, na.rm = TRUE) %>% round(1) %>% format(nsmall = 1),
+    sd = sd(tcu_hs_v2_total, na.rm = TRUE) %>% round(1) %>% format(nsmall = 1)
+  )
+```
+
+You are correct. It looks like I forgot to add that variable to the list for the Table one calculations. It has a mean(SD) of 25.8 (9.5).
+
+
+
+
+
+
+
 
 
 

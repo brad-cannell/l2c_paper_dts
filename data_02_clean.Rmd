@@ -65,7 +65,7 @@ Only do data management in this file that applies to this analysis only. If the 
 
 ![](img/var_table.png)
 
-This is strictly necessary, but it makes the data easier to work with.
+This isn't strictly necessary, but it makes the data easier to work with.
 
 ```{r}
 dts_df <- all_visits %>%
